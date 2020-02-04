@@ -1,0 +1,36 @@
+version: '2.4'
+
+services:
+  # Simple image server for testing ml_api against
+  img_svr:
+    image: jfloff/alpine-python:3.6
+    hostname: img_svr
+    restart: unless-stopped
+    volumes:
+      - ./images:/images
+    ports:
+      - "40000:8080"
+    command: bash -c "cd /images; python -m http.server 8080"
+
+  ml_api:
+    image: ml_api_ov:latest
+    hostname: ml_api
+    restart: unless-stopped
+    build:
+      context: .
+    depends_on:
+      - img_svr
+    #volumes:
+      #- ./:/app
+      #- ../images:/app/images
+    ports:
+      - "3334:3333"
+      - "3003:3002" # ptvsd debugging port
+    environment:
+        DEBUG: 'False'
+        FLASK_APP: 'server.py'
+        OPENVINO_DEVICE: 'CPU'
+        OPENVINO_CPU_EXTENSION: '/opt/intel/openvino/deployment_tools/inference_engine/lib/intel64/libcpu_extension_avx2.so'
+
+    # only start 1 worker to enable ptvsd debugging into container
+    command: bash -c "source /opt/intel/openvino/bin/setupvars.sh; gunicorn --bind 0.0.0.0:3333 --log-level=debug --workers 1 wsgi"

@@ -1,2 +1,4 @@
-bin/model.so
-model/model.weights
+images
+model/model.bin
+model/model.bin.ir
+__pycache__
