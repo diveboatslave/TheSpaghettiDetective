@@ -19,8 +19,25 @@ Checkout the OpenVINO branch
 > cd TheSpaghettiDetective
 > git checkout openvino-model
 ```
-# Running TSD in Docker
+# Running TSD in Docker with OpenVINO model
 
+Building TSD with OpenVINO
+```bash
+> docker-compose build
+```
+
+Start TSD using OpenVINO model
+```bash
+> docker-compose up -d
+```
+
+Stopping TSD using OpenVINO model
+```bash
+> docker-compose down
+```
+
+
+# Running TSD n Docker with YOLOv2 model
 Building TSD with OpenVINO
 ```bash
 > docker-compose -f dc-openvino.yml build
