@@ -40,17 +40,17 @@ Stopping TSD using OpenVINO model
 # Running TSD n Docker with YOLOv2 model
 Building TSD with OpenVINO
 ```bash
-> docker-compose -f dc-openvino.yml build
+> docker-compose -f dc-yolov2.yml build
 ```
 
 Start TSD using OpenVINO model
 ```bash
-> docker-compose -f dc-openvino.yml up -d
+> docker-compose -f dc-yolov2.yml up -d
 ```
 
 Stopping TSD using OpenVINO model
 ```bash
-> docker-compose -f dc-openvino.yml down
+> docker-compose -f dc-yolov2.yml down
 ```
 
 
