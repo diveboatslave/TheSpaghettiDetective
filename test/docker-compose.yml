@@ -1,30 +1,29 @@
 version: '2.4'
 
 services:
+
   # Simple image server for testing ml_api against
   img_svr:
     image: jfloff/alpine-python:3.6
     hostname: img_svr
     restart: unless-stopped
     volumes:
-      - ./images:/images
+      - ./images:/images # mount images folder to serve
     ports:
-      - "40000:8080"
+      - "8080:8080"
     command: bash -c "cd /images; python -m http.server 8080"
 
-  ml_api:
-    image: ml_api_ov:latest
-    hostname: ml_api
+  # ml_api using OpenVINO model
+  ml_api_openvino:
+    image: thespaghettidetective_ml_api/openvino
+    hostname: ml_api_openvino
     restart: unless-stopped
-    build:
-      context: .
     depends_on:
       - img_svr
     #volumes:
       #- ./:/app
-      #- ../images:/app/images
     ports:
-      - "3334:3333"
+      - "3333:3333" # expose port thru host
       - "3003:3002" # ptvsd debugging port
     environment:
         DEBUG: 'False'
@@ -34,3 +33,20 @@ services:
 
     # only start 1 worker to enable ptvsd debugging into container
     command: bash -c "source /opt/intel/openvino/bin/setupvars.sh; gunicorn --bind 0.0.0.0:3333 --log-level=debug --workers 1 wsgi"
+
+  # ml_api using YOLOv2 model
+  ml_api:
+    image: thespaghettidetective_ml_api:latest
+    hostname: ml_api
+    restart: unless-stopped
+    depends_on:
+      - img_svr
+    ports:
+      - "3332:3333" # expose port thru host
+      - "3002:3002" # ptvsd debugging port
+    environment:
+        DEBUG: 'False'
+        FLASK_APP: 'server.py'
+        # ML_API_TOKEN:
+        # HAS_GPU: 'False'
+    command: bash -c "gunicorn --bind 0.0.0.0:3333 --log-level=debug --workers 1 wsgi"
