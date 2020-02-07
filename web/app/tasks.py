@@ -22,7 +22,7 @@ from django.core.mail import EmailMessage
 from channels_presence.models import Room
 
 from .models import *
-from lib.file_storage import list_file_obj, retrieve_to_file_obj, save_file_obj
+from lib.file_storage import list_file_obj, retrieve_to_file_obj, save_file_obj, delete_dir
 from lib.utils import ml_api_auth_headers, orientation_to_ffmpeg_options
 from lib.prediction import update_prediction_with_detections, is_failing, VISUALIZATION_THRESH
 from lib.image import overlay_detections
@@ -36,6 +36,7 @@ def process_print_events(print_id):
     _print = Print.objects.get(id=print_id)
     if (_print.ended_at() - _print.started_at).total_seconds() < settings.TIMELAPSE_MINIMUM_SECONDS:
         _print.delete()
+        clean_up_print_pics(_print)
         return
 
     print_notification.delay(print_id)
@@ -54,12 +55,7 @@ def compile_timelapse(print_id):
     os.mkdir(to_dir)
 
     ffmpeg_extra_options = orientation_to_ffmpeg_options(_print.printer.settings)
-
-    # TODO: remove me after transition is over
-    pic_dir = f'{_print.printer.id}'
-    use_subdir = redis.print_pic_subdir_get(_print.id)
-    if use_subdir and use_subdir == 't':
-            pic_dir = f'{_print.printer.id}/{_print.id}'
+    pic_dir = f'{_print.printer.id}/{_print.id}'
 
     print_pics = filter_pics_by_start_end(list_file_obj('raw/{}/'.format(pic_dir), settings.PICS_CONTAINER), _print.started_at, _print.ended_at())
     print_pics.sort()
@@ -98,12 +94,7 @@ def compile_timelapse(print_id):
         preidction_json = []
         for print_pic_filename in print_pics:
             try:
-                re_parttern = 'tagged/(\d+)/([\d.]+).jpg'
-                # TODO: remove me after transition is over
-                if use_subdir and use_subdir == 't':
-                    re_parttern = 'tagged/(\d+)/\d+/([\d.]+).jpg'
-
-                m = re.search(re_parttern, print_pic_filename)
+                m = re.search('tagged/(\d+)/\d+/([\d.]+).jpg', print_pic_filename)
                 p_json = json.loads(redis.printer_p_json_get(m[1], m[2]))
             except (json.decoder.JSONDecodeError, TypeError):    # In case there is no corresponding json, the file will be empty and JSONDecodeError will be thrown
                 p_json = [{}]
@@ -118,6 +109,7 @@ def compile_timelapse(print_id):
         _print.save()
 
     shutil.rmtree(to_dir, ignore_errors=True)
+    clean_up_print_pics(_print)
 
 @shared_task(acks_late=True, bind=True, autoretry_for=(Exception,), retry_kwargs={'max_retries': 2}, retry_backoff=True)
 def preprocess_timelapse(self, user_id, video_path, filename):
@@ -235,6 +227,11 @@ def filter_pics_by_start_end(pic_files, start_time, end_time):
             filtered_pic_files += [pic_file]
 
     return filtered_pic_files
+
+def clean_up_print_pics(_print):
+    pic_dir = f'{_print.printer.id}/{_print.id}'
+    delete_dir('raw/{}/'.format(pic_dir), settings.PICS_CONTAINER)
+    delete_dir('tagged/{}/'.format(pic_dir), settings.PICS_CONTAINER)
 
 def send_timelapse_detection_done_email(_print):
     if not settings.EMAIL_HOST:

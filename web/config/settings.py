@@ -196,11 +196,11 @@ ACCOUNT_AUTHENTICATION_METHOD = 'email'
 SOCIALACCOUNT_QUERY_EMAIL = True
 ACCOUNT_LOGOUT_ON_GET = True
 ACCOUNT_CONFIRM_EMAIL_ON_GET = True
-ACCOUNT_EMAIL_VERIFICATION = os.environ.get(
-    'ACCOUNT_EMAIL_VERIFICATION', 'none')
+ACCOUNT_EMAIL_VERIFICATION = 'none'
 ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'https'
 
 LOGIN_REDIRECT_URL = '/'
+ACCOUNT_ALLOW_SIGN_UP = os.environ.get('ACCOUNT_ALLOW_SIGN_UP') == 'True'
 
 SITE_ID = 1
 SITE_USES_HTTPS = os.environ.get('SITE_USES_HTTPS') == 'True'
@@ -214,15 +214,14 @@ REST_FRAMEWORK = {
     ),
 }
 
+# Layout
+TEMPLATE_LAYOUT = "layout.html"
+
 # Sentry
 if os.environ.get('SENTRY_DSN'):
     INSTALLED_APPS = INSTALLED_APPS + [
         'raven.contrib.django.raven_compat',
     ]
-
-# Extra js
-EXTRA_JS = [s for s in os.environ.get('EXTRA_JS', '').split('|') if s]
-IS_ENT = False
 
 # REDIS client
 REDIS_URL = os.environ.get('REDIS_URL', 'redis://redis:6379')
@@ -246,11 +245,10 @@ TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 
 # settings export
 SETTINGS_EXPORT = [
-    'EXTRA_JS',
     'TWILIO_ENABLED',
-    'ACCOUNT_EMAIL_VERIFICATION',
     'TELEGRAM_BOT_TOKEN',
-    'IS_ENT',
+    'TEMPLATE_LAYOUT',
+    'ACCOUNT_ALLOW_SIGN_UP',
 ]
 
 # Celery

@@ -235,16 +235,12 @@ class Printer(SafeDeleteModel):
         if not current_print_ts or current_print_ts == -1:
             raise Exception(f'Invalid current_print_ts when trying to set current_print: {current_print_ts}')
 
-        cur_print, created = Print.objects.get_or_create(
+        cur_print, _ = Print.objects.get_or_create(
             user=self.user,
             printer=self,
             ext_id=current_print_ts,
             defaults={'filename': filename, 'started_at': timezone.now()},
             )
-
-        # TODO: remove me after transition is over
-        if created:
-            redis.print_pic_subdir_set(cur_print.id)
 
         if cur_print.ended_at():
             if cur_print.ended_at() > (timezone.now() - timedelta(seconds=30)): # Race condition. Some msg with valid print_ts arrived after msg with print_ts=-1
@@ -464,6 +460,10 @@ class Print(SafeDeleteModel):
 
     def is_canceled(self):
         return bool(self.cancelled_at)
+
+    @property
+    def expecting_detective_view(self):
+        return self.tagged_video_url or self.uploaded_at
 
 class PrintEvent(models.Model):
     STARTED = 'STARTED'

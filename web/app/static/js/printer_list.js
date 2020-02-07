@@ -156,17 +156,15 @@ $(document).ready(function () {
 
         // Panel settings
         printerCard.find('input[name=watching]').prop('checked', printer.watching);
-        printerCard.find('#watching-status').text(printer.watching ? 'ON' : 'OFF');
         if (printer.watching) {
-            printerCard.find('#detailed-controls').show();
+            printerCard.find('label[for^=watching-toggle-] .text-muted').hide();
         } else {
-            printerCard.find('#detailed-controls').hide();
+            printerCard.find('label[for^=watching-toggle-] .text-muted').show();
         }
+        printerCard.find('input[name=pause_on_failure]').prop('checked', printer.action_on_failure == 'PAUSE');
         if (printer.action_on_failure == 'PAUSE') {
-            printerCard.find('input[name=pause_on_failure]').prop('checked', true);
             printerCard.find('label[for^=pause-toggle-] .text-muted').hide();
         } else {
-            printerCard.find('input[name=pause_on_failure]').prop('checked', false);
             printerCard.find('label[for^=pause-toggle-] .text-muted').show();
         }
 
@@ -261,38 +259,6 @@ $(document).ready(function () {
     }
 
     /*** End of printer card */
-
-    function showNotificationMsgIfExisted() {
-        $.ajax({
-            url: '/ent/api/messages/',
-            type: 'GET',
-            dataType: 'json',
-        }).done(function(result) {
-            if (result.length > 0) {
-                var msg = result[0];
-                var opt = {
-                    position: 'top-end',
-                    confirmButtonText: "Gotcha! Don't show this again.",
-                };
-                var msg_obj = JSON.parse(msg.message);
-                _.assign(opt, msg_obj);
-                Swal.fire(opt)
-                .then(function (result) {
-                    if (result.value) {
-                        $.ajax({
-                            url: '/ent/api/messages/' + msg.id + '/dismiss/',
-                            type: 'GET',
-                            dataType: 'json',
-                        });
-                    }
-                });
-            }
-         });
-    }
-
-    if (isEnt) {
-        showNotificationMsgIfExisted();
-    }
 
     $('.hint').popover({
         container: 'body'
