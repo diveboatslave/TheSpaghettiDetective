@@ -75,8 +75,11 @@ class OctoPrintPicView(APIView):
         pic = cap_image_size(pic)
         pic_id = str(timezone.now().timestamp())
 
-        pic_path = f'{printer.id}/{printer.current_print.id}/{pic_id}.jpg'
-        internal_url, external_url = save_file_obj(f'raw/{pic_path}', pic, settings.PICS_CONTAINER)
+        if not printer.current_print:     # Some times pics come in when current_print is not set - maybe because printer status is out of sync between plugin and server?
+            pic_path = f'{printer.id}/0/{pic_id}.jpg'
+        else:
+            pic_path = f'{printer.id}/{printer.current_print.id}/{pic_id}.jpg'
+        internal_url, external_url = save_file_obj(f'raw/{pic_path}', pic, settings.PICS_CONTAINER, long_term_storage=False)
 
         if not printer.should_watch() or not printer.actively_printing():
             redis.printer_pic_set(printer.id, {'img_url': external_url}, ex=IMG_URL_TTL_SECONDS)
@@ -99,7 +102,7 @@ class OctoPrintPicView(APIView):
         overlay_detections(Image.open(pic), detections_to_visualize).save(tagged_img, "JPEG")
         tagged_img.seek(0)
 
-        _, external_url = save_file_obj(f'tagged/{pic_path}', tagged_img, settings.PICS_CONTAINER)
+        _, external_url = save_file_obj(f'tagged/{pic_path}', tagged_img, settings.PICS_CONTAINER, long_term_storage=False)
         redis.printer_pic_set(printer.id, {'img_url': external_url}, ex=IMG_URL_TTL_SECONDS)
 
         prediction_json = serializers.serialize("json", [prediction, ])
