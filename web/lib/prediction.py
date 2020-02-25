@@ -23,13 +23,16 @@ def is_failing(prediction, detective_sensitivity, escalating_factor=1):
         return False
 
     adjusted_ewm_mean = (prediction.ewm_mean - prediction.rolling_mean_long) * detective_sensitivity / escalating_factor
+    val = (prediction.rolling_mean_short - prediction.rolling_mean_long) * settings.ROLLING_MEAN_SHORT_MULTIPLE
+    LOGGER.info('%d - EWM: %f\tADJUSTED EWM: %f\tVAL: %f\tSENSITIVITY: %f\tEF: %f' % (prediction.current_frame_num, prediction.ewm_mean, adjusted_ewm_mean, val, detective_sensitivity, escalating_factor))
+
     if adjusted_ewm_mean < settings.THRESHOLD_LOW:
         return False
 
     if adjusted_ewm_mean > settings.THRESHOLD_HIGH:
         return True
 
-    if adjusted_ewm_mean > (prediction.rolling_mean_short - prediction.rolling_mean_long) * settings.ROLLING_MEAN_SHORT_MULTIPLE:
+    if adjusted_ewm_mean > val:
         return True
 
 def next_ewm_mean(p, current_ewm_mean):
@@ -40,4 +43,6 @@ def next_rolling_mean(p, current_rolling_mean, count, win_size):
     return current_rolling_mean + (p - current_rolling_mean )/float(win_size if win_size <= count else count+1)
 
 def sum_p_in_detections(detections):
-    return sum([ d[1] for d in detections ])
+    p = sum([ d[1] for d in detections ])
+    LOGGER.info('SUM_PRED: %f' % p)
+    return p

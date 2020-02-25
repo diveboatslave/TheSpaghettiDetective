@@ -35,7 +35,7 @@ x-web-defaults: &web-defaults
 services:
 
   ml_api:
-    image: thespaghettidetective_ml_api:latest
+    image: thespaghettidetective_ml_api/yolov2:latest
     hostname: ml_api
     restart: unless-stopped
     build:

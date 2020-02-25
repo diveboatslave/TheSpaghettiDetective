@@ -290,6 +290,7 @@ INIT_SAFE_FRAME_NUM = int(os.environ.get('INIT_SAFE_FRAME_NUM', 30))
 # Print is failing is ewm mean is this many times over the short rolling mean
 ROLLING_MEAN_SHORT_MULTIPLE = float(
     os.environ.get('ROLLING_MEAN_SHORT_MULTIPLE', 3.8))
+
 # The multiplication factor to escalate "warning" to "error"
 ESCALATING_FACTOR = float(os.environ.get('ESCALATING_FACTOR', 1.75))
 

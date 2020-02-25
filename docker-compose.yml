@@ -36,18 +36,17 @@ x-web-defaults: &web-defaults
 services:
 
   ml_api:
-    image: thespaghettidetective_ml_api/openvino
+    image: thespaghettidetective_ml_api/openvino:latest
     hostname: ml_api
     restart: unless-stopped
     build:
       context: ml_api_openvino
+    ports:
+      - "3333:3333"
+      - "3003:3002" # ptvsd debugging port
     environment:
         DEBUG: 'True'
-        FLASK_APP: 'server.py'
-        OPENVINO_DEVICE: 'CPU'
-        OPENVINO_CPU_EXTENSION: '/opt/intel/openvino/deployment_tools/inference_engine/lib/intel64/libcpu_extension_avx2.so'
-    command: bash -c "source /opt/intel/openvino/bin/setupvars.sh; gunicorn --bind 0.0.0.0:3333 --log-level=debug --workers 2 wsgi"
-
+    #command: bash -c "source /opt/intel/openvino/bin/setupvars.sh; gunicorn --bind 0.0.0.0:3333 --log-level=debug --workers 2 wsgi"
 
   web:
     <<: *web-defaults

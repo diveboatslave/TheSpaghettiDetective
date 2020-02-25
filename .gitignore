@@ -131,3 +131,5 @@ docker-compose.override.yml
 
 *.code-workspace
 dc-simon.yml
+ml_api_openvino/model1
+Dockerfile.simon

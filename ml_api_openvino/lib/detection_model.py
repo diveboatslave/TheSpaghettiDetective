@@ -2,7 +2,6 @@ import os, sys
 import cv2
 from openvino.inference_engine import IENetwork, IECore
 from argparse import ArgumentParser, SUPPRESS
-import logging
 from math import exp as exp
 from time import time
 
@@ -12,7 +11,7 @@ OPENVINO_SCALARS = [2.75, 1.5]
 class YoloParams:
     # ------------------------------------------- Extracting layer parameters ------------------------------------------
     # Magic numbers are copied from yolo samples
-    def __init__(self, param, side, logger):
+    def __init__(self, param, side):
         self.num = 3 if 'num' not in param else int(param['num'])
         self.coords = 4 if 'coords' not in param else int(param['coords'])
         self.classes = 80 if 'classes' not in param else int(param['classes'])
@@ -31,12 +30,11 @@ class YoloParams:
 
         self.side = side
         self.isYoloV3 = 'mask' in param  # Weak way to determine but the only one.
-        self.logger = logger
 
 
     def log_params(self):
         params_to_print = {'classes': self.classes, 'num': self.num, 'coords': self.coords, 'anchors': self.anchors}
-        [self.logger.info("         {:8}: {}".format(param_name, param)) for param_name, param in params_to_print.items()]
+        [print("         {:8}: {}".format(param_name, param)) for param_name, param in params_to_print.items()]
 
 
 def entry_index(side, coord, classes, location, entry):
@@ -75,19 +73,23 @@ def parse_yolo_region(blob, resized_image_shape, original_im_shape, params, thre
         for n in range(params.num):
             obj_index = entry_index(params.side, params.coords, params.classes, n * side_square + i, params.coords)
             scale = predictions[obj_index]
+
             if scale < threshold:
                 continue
+
             box_index = entry_index(params.side, params.coords, params.classes, n * side_square + i, 0)
             # Network produces location predictions in absolute coordinates of feature maps.
             # Scale it to relative coordinates.
             x = (col + predictions[box_index + 0 * side_square]) / params.side
             y = (row + predictions[box_index + 1 * side_square]) / params.side
+
             # Value for exp is very big number in some cases so following construction is using here
             try:
                 w_exp = exp(predictions[box_index + 2 * side_square])
                 h_exp = exp(predictions[box_index + 3 * side_square])
             except OverflowError:
                 continue
+
             # Depends on topology we need to normalize sizes by feature maps (up to YOLOv3) or by input shape (YOLOv3)
             w = w_exp * params.anchors[2 * n] / (resized_image_w if params.isYoloV3 else params.side)
             h = h_exp * params.anchors[2 * n + 1] / (resized_image_h if params.isYoloV3 else params.side)
@@ -95,9 +97,11 @@ def parse_yolo_region(blob, resized_image_shape, original_im_shape, params, thre
                 class_index = entry_index(params.side, params.coords, params.classes, n * side_square + i,
                                           params.coords + 1 + j)
                 confidence = scale * predictions[class_index]
+
                 if confidence < threshold:
                     continue
 
+                # todo: fine tune scaling
                 # scale OpenVINO model more to get closer to YOLO2 model
                 if confidence < .3:
                     confidence = confidence * OPENVINO_SCALARS[0]
@@ -143,7 +147,7 @@ class OpenVinoModel:
 openvino_model = None
 
 
-def load_net(model_xml, labels_path, device, cpu_extension, log=None):
+def load_net(model_xml, labels_path, device, cpu_extension, debug=False):
     global openvino_model
 
     if not os.path.exists(model_xml):
@@ -153,16 +157,13 @@ def load_net(model_xml, labels_path, device, cpu_extension, log=None):
     if device == "CPU" and (cpu_extension is None or not os.path.exists(cpu_extension)):
         raise ValueError("Invalid cpu extension path `"+os.path.abspath(cpu_extension)+"`")
 
-    if log is None:
-        log = logging.getLogger()
-
     if openvino_model is None:
         # plugin initialization for specified device and load extensions library if specified
         model_bin = os.path.splitext(model_xml)[0] + ".bin"
         if not os.path.exists(model_xml):
             raise ValueError("Invalid model bin path `"+os.path.abspath(model_bin)+"`")
 
-        log.info("Creating Inference Engine...")
+        print("Creating Inference Engine...")
         ie = IECore()
         if device == "CPU" and cpu_extension is not None:
             ie.add_extension(cpu_extension, "CPU")
@@ -176,16 +177,16 @@ def load_net(model_xml, labels_path, device, cpu_extension, log=None):
             supported_layers = ie.query_network(net, "CPU")
             not_supported_layers = [l for l in net.layers.keys() if l not in supported_layers]
             if len(not_supported_layers) != 0:
-                log.error("Following layers are not supported by the plugin for specified device {}:\n {}".
+                print("Following layers are not supported by the plugin for specified device {}:\n {}".
                         format(device, ', '.join(not_supported_layers)))
-                log.error("Please try to specify cpu extensions library path in sample's command line parameters using -l "
+                print("Please try to specify cpu extensions library path in sample's command line parameters using -l "
                         "or --cpu_extension command line argument")
                 sys.exit(1)
 
         assert len(net.inputs.keys()) == 1, "Sample supports only YOLO V3 based single input topologies"
 
         # prepare inputs
-        log.info("Preparing inputs")
+        if debug: print("Preparing inputs")
         input_blob = next(iter(net.inputs))
 
         # defaulf batch_size is 1
@@ -203,7 +204,7 @@ def load_net(model_xml, labels_path, device, cpu_extension, log=None):
 
         # load model to the plugin
         num_requests = 2
-        log.info("Loading model to the plugin: num requests = %d" % num_requests)
+        if debug: print("Loading model to the plugin: num requests = %d" % num_requests)
         exec_net = ie.load_network(network=net, num_requests=num_requests, device_name=device)
 
         # create model class into global variable
@@ -212,18 +213,14 @@ def load_net(model_xml, labels_path, device, cpu_extension, log=None):
     return openvino_model
 
 
-def detect(model, frame, thresh=.5, iou_threshold=0.60, raw_output_message=False, logger=None, show=False):
-    if logger is None:
-        logger = logging.getLogger()
-
-    render_time = 0
+def detect(model, frame, thresh=.5, iou_threshold=0.60, show=False, debug=False):
     parsing_time = 0
     cur_request_id = 0
 
     net, exec_net, labels_map, n, c, w, h, input_blob = model.params()
 
     # begin inference
-    logger.info("Starting inference...")
+    if debug: print("Starting inference...")
     in_frame = cv2.resize(frame, (w, h))
 
     # resize input_frame to network size
@@ -232,7 +229,6 @@ def detect(model, frame, thresh=.5, iou_threshold=0.60, raw_output_message=False
 
     # start inference
     start_time = time()
-    #start = datetime.now()
     exec_net.start_async(request_id=cur_request_id, inputs={input_blob: in_frame})
 
     # collect object detection results
@@ -244,12 +240,11 @@ def detect(model, frame, thresh=.5, iou_threshold=0.60, raw_output_message=False
         start_time = time()
         for layer_name, out_blob in output.items():
             out_blob = out_blob.reshape(net.layers[net.layers[layer_name].parents[0]].shape)
-            layer_params = YoloParams(net.layers[layer_name].params, out_blob.shape[2], logger)
-            #logger.info("Layer {} parameters: ".format(layer_name))
+            layer_params = YoloParams(net.layers[layer_name].params, out_blob.shape[2])
+            #print("Layer {} parameters: ".format(layer_name))
             #layer_params.log_params()
-            objects += parse_yolo_region(out_blob, in_frame.shape[2:],
-                                        frame.shape[:-1], layer_params,
-                                        thresh)
+            objects += parse_yolo_region(out_blob, in_frame.shape[2:], frame.shape[:-1], layer_params, thresh)
+
         parsing_time = time() - start_time
 
     # filter overlapping boxes with respect to the --iou_threshold CLI parameter
@@ -264,9 +259,9 @@ def detect(model, frame, thresh=.5, iou_threshold=0.60, raw_output_message=False
     # Drawing objects with respect to the --prob_threshold CLI parameter
     objects = [obj for obj in objects if obj['confidence'] >= thresh]
 
-    if len(objects) and raw_output_message:
-        logger.info("\nDetected boxes for batch {}:".format(1))
-        logger.info(" Class ID | Confidence | XMIN | YMIN | XMAX | YMAX | COLOR ")
+    if len(objects) and debug:
+        print("\nDetected boxes for batch {}:".format(1))
+        print(" Class ID | Confidence | XMIN | YMIN | XMAX | YMAX | COLOR ")
 
     detections = []
 
@@ -278,6 +273,7 @@ def detect(model, frame, thresh=.5, iou_threshold=0.60, raw_output_message=False
             continue
 
         # convert bounding to yolo values
+        # todo: this is possibly a reversal of parse_yolo_region code in line 255
         w = obj['xmax'] - obj['xmin']
         h = obj['ymax'] - obj['ymin']
         w2 = w//2
@@ -292,8 +288,8 @@ def detect(model, frame, thresh=.5, iou_threshold=0.60, raw_output_message=False
 
         color = (int(min(obj['class_id'] * 12.5, 255)), min(obj['class_id'] * 7, 255), min(obj['class_id'] * 5, 255))
 
-        if raw_output_message:
-            logger.info(
+        if debug:
+            print(
                 "{:^9} | {:10f} | {:4} | {:4} | {:4} | {:4} | {} ".format(det_label, obj['confidence'], obj['xmin'],
                                                                             obj['ymin'], obj['xmax'], obj['ymax'],
                                                                             color))
@@ -359,14 +355,11 @@ def build_argparser():
 
 
 if __name__ == "__main__":
-    logging.basicConfig(format="[ %(levelname)s ] %(message)s", level=logging.INFO, stream=sys.stdout)
-    logger = logging.getLogger()
-
     args = build_argparser().parse_args()
 
-    model = load_net(args.model, args.labels, args.device, args.cpu_extension, logger)
+    model = load_net(args.model, args.labels, args.device, args.cpu_extension, True)
 
     custom_image_bgr = cv2.imread(args.input)
 
-    print(detect(model, custom_image_bgr, thresh=args.prob_threshold, iou_threshold=args.iou_threshold, raw_output_message=args.raw_output_message))
+    print(detect(model, custom_image_bgr, thresh=args.prob_threshold, iou_threshold=args.iou_threshold, debug=True))
 

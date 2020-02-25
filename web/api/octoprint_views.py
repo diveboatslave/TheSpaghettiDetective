@@ -90,6 +90,7 @@ class OctoPrintPicView(APIView):
         detections = resp['detections']
         prediction, _ = PrinterPrediction.objects.get_or_create(printer=printer)
         update_prediction_with_detections(prediction, detections)
+        LOGGER.info(prediction)
         prediction.save()
 
         pic.file.seek(0)  # Reset file object pointer so that we can load it again

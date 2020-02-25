@@ -1,7 +1,11 @@
 FROM diveboatslave/openvino-2019.r3.376:latest
 
 WORKDIR /app
+
 EXPOSE 3333
+EXPOSE 3002
+
+ARG INSTALL_DIR=/opt/intel/openvino
 
 RUN apt-get update && \
     apt-get install --no-install-recommends -y apt-utils python3-pip python3-setuptools nano wget curl ncdu && \
@@ -15,10 +19,11 @@ RUN pip install --upgrade pip
 ADD requirements.txt requirements_x86_64.txt ./
 RUN pip install -r requirements_x86_64.txt
 
+ENV FLASK_APP='server.py'
 ENV OPENVINO_DEVICE=CPU
 ENV OPENVINO_CPU_EXTENSION=/opt/intel/openvino/deployment_tools/inference_engine/lib/intel64/libcpu_extension_avx2.so
 
 # download OpenVINO IR model
 RUN wget --quiet -O ./model/model.bin $(cat ./model/model.bin.url | tr -d '\r')
 
-CMD ["/bin/bash"]
+CMD ["/bin/bash", "-c", "source /opt/intel/openvino/bin/setupvars.sh && gunicorn --bind 0.0.0.0:3333 --log-level=debug --workers 2 wsgi"]

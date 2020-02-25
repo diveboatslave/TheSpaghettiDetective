@@ -8,11 +8,10 @@ import cv2
 import numpy as np
 import requests
 import json
-import logging
 from datetime import datetime
 from auth import token_required
 from lib.detection_model import load_net, detect
-#import ptvsd
+import ptvsd
 from io import BytesIO
 from PIL import Image
 
@@ -21,16 +20,15 @@ SESSION_TTL_SECONDS = 60*2
 
 app = flask.Flask(__name__)
 
-if __name__ != '__main__':
-    gunicorn_logger = logging.getLogger('gunicorn.info')
-    app.logger.handlers.extend(gunicorn_logger.handlers)
-    # setup remote debugger
-    # ptvsd.enable_attach(address = ('0.0.0.0', 3002), redirect_output=True)
-
 # SECURITY WARNING: don't run with debug turned on in production!
 app.config['DEBUG'] = (environ.get('DEBUG') == 'True')
+debug = app.config['DEBUG']
 
-#debug_func = app.logger.info if app.config['DEBUG'] else None
+if __name__ != '__main__':
+    # setup remote debugger
+    if debug:
+        print('Attaching PTVSD debugging port')
+        ptvsd.enable_attach(address = ('0.0.0.0', 3002), redirect_output=True)
 
 # Sentry
 sentry = None
@@ -49,29 +47,34 @@ if model_labels is None:
 device  = environ.get("OPENVINO_DEVICE", "CPU")
 cpu_extension  = environ.get("OPENVINO_CPU_EXTENSION", None)
 
-model = load_net(model_xml, model_labels, device, cpu_extension, app.logger)
+model = load_net(model_xml, model_labels, device, cpu_extension, debug)
 
 @app.route('/p/', methods=['GET'])
 #@token_required
 def get_p():
     if 'img' in request.args:
         try:
+            start = datetime.now()
             show = 'show' in request.args
             url = request.args['img']
             if url.startswith('http'):
-                resp = requests.get(url, stream=True, timeout=(0.1, 5))
+                resp = requests.get(url, stream=True, timeout=(0.5, 5))
                 resp.raise_for_status()
                 img_array = np.array(bytearray(resp.content), dtype=np.uint8)
             else:
                 img_path = path.join(path.dirname(path.realpath(__file__)), url)
-                app.logger.info('path %s' % img_path)
+                if debug: print('path %s' % img_path)
                 with open(img_path, 'rb') as infile:
                     buf = infile.read()
                 img_array = np.fromstring(buf, dtype='uint8')
 
             img = cv2.imdecode(img_array, -1)
+            imageload = datetime.now() - start
+
             start = datetime.now()
-            result = detect(model, img, thresh=THRESH, show=show)
+            result = detect(model, img, thresh=THRESH, show=show, debug=debug)
+            timetaken = datetime.now() - start
+
             if show:
                 img = cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
                 img = Image.fromarray(img)
@@ -80,19 +83,16 @@ def get_p():
                 img2.seek(0)
                 return send_file(img2, mimetype='image/jpeg')
             else:
-                timetaken = datetime.now() - start
-                app.logger.info("INFERENCE: %s" % timetaken)
-                result = {'time-taken': str(timetaken),'detections': result}
-                if len(result) > 0:
-                    app.logger.info(json.dumps(result))
+                result = {'image-load': str(imageload), 'time-taken': str(timetaken),'detections': result}
+                if debug and len(result) > 0: print(json.dumps(result))
                 return jsonify(result)
 
         except Exception as ex:
             if sentry:
                 sentry.captureException()
-            return jsonify({'detections':[], 'error': ex.__str__})
+            return jsonify({'detections':[], 'error': '%s' % ex})
     else:
-        app.logger.warn("Invalid request params: {}".format(request.args))
+        print("Invalid request params: {}".format(request.args))
 
     return jsonify({'detections': []})
 
